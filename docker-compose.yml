@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: sg_rent
+      POSTGRES_USER: sg_rent
+      POSTGRES_PASSWORD: sg_rent_dev
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sg_rent -d sg_rent"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "16379:6379"
+
+  backend:
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "18000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data:/data:ro
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sg_rent:sg_rent_dev@db:5432/sg_rent
+      DATA_DIR: /data
+      REDIS_URL: redis://redis:6379/0
+      ONEMAP_API_URL: https://developers.onemap.sg
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "15173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:18000
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
